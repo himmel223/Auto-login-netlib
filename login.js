@@ -1,9 +1,20 @@
 const axios = require('axios');
 const { chromium } = require('playwright');
 
+// --- 配置常量 ---
+const DELAY_MIN_MS = 8000;  // 账号间最小延迟 (8秒)
+const DELAY_MAX_MS = 12000; // 账号间最大延迟 (12秒)
+
+// --- 环境变量 ---
 const token = process.env.BOT_TOKEN;
 const chatId = process.env.CHAT_ID;
 const accounts = process.env.ACCOUNTS;
+
+// --- 辅助函数：生成随机延迟 ---
+function randomDelay(minMs, maxMs) {
+  const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
 
 if (!accounts) {
   console.log('❌ 未配置账号');
@@ -25,7 +36,8 @@ async function sendTelegram(message) {
   if (!token || !chatId) return;
 
   const now = new Date();
-  const hkTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+  // 调整时间为香港时间 (UTC+8)
+  const hkTime = new Date(now.getTime() + (8 * 60 * 60 * 1000)); 
   const timeStr = hkTime.toISOString().replace('T', ' ').substr(0, 19) + " HKT";
 
   const fullMessage = `🎉 Netlib 登录通知\n\n登录时间：${timeStr}\n\n${message}`;
@@ -46,7 +58,8 @@ async function loginWithAccount(user, pass) {
   
   const browser = await chromium.launch({ 
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    // 增加沙箱参数以提高兼容性
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'] 
   });
   
   let page;
@@ -54,40 +67,55 @@ async function loginWithAccount(user, pass) {
   
   try {
     page = await browser.newPage();
-    page.setDefaultTimeout(30000);
+    page.setDefaultTimeout(45000); // 增加默认超时时间到 45 秒
     
     console.log(`📱 ${user} - 正在访问网站...`);
-    await page.goto('https://www.netlib.re/', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(3000);
+    await page.goto('https://www.netlib.re/', { waitUntil: 'domcontentloaded' });
+    
+    // 随机等待 3-5 秒
+    let delay = await randomDelay(3000, 5000); 
+    console.log(`⏳ ${user} - 初始页面加载等待 ${delay / 1000} 秒...`);
     
     console.log(`🔑 ${user} - 点击登录按钮...`);
-    await page.click('text=Login', { timeout: 5000 });
+    // 使用更健壮的 Role 选择器
+    await page.getByRole('link', { name: 'Login' }).click({ timeout: 10000 });
     
-    await page.waitForTimeout(2000);
+    // 随机等待 2-3 秒
+    delay = await randomDelay(2000, 3000);
+    console.log(`⏳ ${user} - 等待登录页加载 ${delay / 1000} 秒...`);
+    await randomDelay(2000, 3000);
     
     console.log(`📝 ${user} - 填写用户名...`);
+    // 使用更健壮的类型选择器
     await page.fill('input[name="username"], input[type="text"]', user);
-    await page.waitForTimeout(1000);
+    
+    // 随机等待 1-2 秒
+    await randomDelay(1000, 2000);
     
     console.log(`🔒 ${user} - 填写密码...`);
     await page.fill('input[name="password"], input[type="password"]', pass);
-    await page.waitForTimeout(1000);
+    
+    // 随机等待 1-2 秒
+    await randomDelay(1000, 2000);
     
     console.log(`📤 ${user} - 提交登录...`);
-    await page.click('button:has-text("Validate"), input[type="submit"]');
+    // 使用更健壮的 Role 选择器
+    await page.getByRole('button', { name: 'Validate' }).click();
     
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(5000);
+    // 等待网络和页面状态稳定
+    await page.waitForLoadState('networkidle'); 
+    await page.waitForTimeout(5000); // 最后等待 5 秒确认页面跳转
     
     // 检查登录是否成功
     const pageContent = await page.content();
     
+    // 根据网站内容判断是否成功，这里假设 'exclusive owner' 或用户名出现即成功
     if (pageContent.includes('exclusive owner') || pageContent.includes(user)) {
       console.log(`✅ ${user} - 登录成功`);
       result.success = true;
       result.message = `✅ ${user} 登录成功`;
     } else {
-      console.log(`❌ ${user} - 登录失败`);
+      console.log(`❌ ${user} - 登录失败 (页面未显示成功标识)`);
       result.message = `❌ ${user} 登录失败`;
     }
     
@@ -114,10 +142,12 @@ async function main() {
     const result = await loginWithAccount(user, pass);
     results.push(result);
     
-    // 如果不是最后一个账号，等待一下再处理下一个
+    // 如果不是最后一个账号，进行随机延迟
     if (i < accountList.length - 1) {
-      console.log('⏳ 等待3秒后处理下一个账号...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const delay = await randomDelay(DELAY_MIN_MS, DELAY_MAX_MS);
+      console.log(`\n⏳ 模拟人工休息，等待 ${delay / 1000} 秒后处理下一个账号...`);
+      // 使用随机延迟函数进行等待
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   
