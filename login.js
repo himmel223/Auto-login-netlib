@@ -117,7 +117,7 @@ async function main() {
     // 如果不是最后一个账号，等待一下再处理下一个
     if (i < accountList.length - 1) {
       console.log('⏳ 等待3秒后处理下一个账号...');
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
   
