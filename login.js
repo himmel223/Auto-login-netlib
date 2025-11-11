@@ -46,7 +46,7 @@ async function loginWithAccount(user, pass) {
   
   const browser = await chromium.launch({ 
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'] 
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
   
   let page;
@@ -54,52 +54,40 @@ async function loginWithAccount(user, pass) {
   
   try {
     page = await browser.newPage();
-    page.setDefaultTimeout(45000); 
-
-    // **假设网站访问后直接进入了包含该登录框的页面**
-    console.log(`📱 ${user} - 正在访问网站...`);
-    await page.goto('https://www.netlib.re/', { waitUntil: 'domcontentloaded' });
+    page.setDefaultTimeout(30000);
     
-    // 随机等待 3-5 秒，模拟人工观察页面
-    let delayMs = Math.floor(Math.random() * (5000 - 3000 + 1)) + 3000;
-    console.log(`⏳ ${user} - 初始页面加载等待 ${delayMs / 1000} 秒...`);
-    await new Promise(resolve => setTimeout(resolve, delayMs));
-
-    // **!!! 移除原有的点击“Login”步骤，直接进行表单填写 !!!**
-    // 之前点击“Login”失败的原因可能是：该页面已经是登录页，无需再次点击。
+    console.log(`📱 ${user} - 正在访问网站...`);
+    await page.goto('https://www.netlib.re/', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+    
+    console.log(`🔑 ${user} - 点击登录按钮...`);
+    await page.click('text=Login', { timeout: 5000 });
+    
+    await page.waitForTimeout(2000);
     
     console.log(`📝 ${user} - 填写用户名...`);
-    // 使用 ID 选择器，最稳定可靠
-    await page.locator('#username').fill(user);
-    
-    // 随机等待 1-2 秒
-    await randomDelay(1000, 2000);
+    await page.fill('input[name="username"], input[type="text"]', user);
+    await page.waitForTimeout(1000);
     
     console.log(`🔒 ${user} - 填写密码...`);
-    // 使用 ID 选择器
-    await page.locator('#password').fill(pass);
-    
-    // 随机等待 1-2 秒
-    await randomDelay(1000, 2000);
+    await page.fill('input[name="password"], input[type="password"]', pass);
+    await page.waitForTimeout(1000);
     
     console.log(`📤 ${user} - 提交登录...`);
-    // 使用 Role 选择器点击 “Validate” 按钮
-    await page.getByRole('button', { name: 'Validate' }).click(); 
+    await page.click('button:has-text("Validate"), input[type="submit"]');
     
-    // 等待网络和页面状态稳定
-    await page.waitForLoadState('networkidle'); 
-    await page.waitForTimeout(5000); // 最后等待 5 秒确认页面跳转
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(5000);
     
     // 检查登录是否成功
     const pageContent = await page.content();
     
-    // 这里的成功判断逻辑不变
     if (pageContent.includes('exclusive owner') || pageContent.includes(user)) {
       console.log(`✅ ${user} - 登录成功`);
       result.success = true;
       result.message = `✅ ${user} 登录成功`;
     } else {
-      console.log(`❌ ${user} - 登录失败 (页面未显示成功标识)`);
+      console.log(`❌ ${user} - 登录失败`);
       result.message = `❌ ${user} 登录失败`;
     }
     
